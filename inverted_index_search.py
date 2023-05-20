@@ -4,6 +4,84 @@ import pandas as pd
 
 from functools import lru_cache
 
+from math import log
+from math import floor
+
+from sys import getsizeof, stderr
+from itertools import chain
+from collections import deque
+try:
+    from reprlib import repr
+except ImportError:
+    pass
+
+def total_size(o, handlers={}, verbose=False):
+    """ Returns the approximate memory footprint an object and all of its contents.
+
+    Automatically finds the contents of the following builtin containers and
+    their subclasses:  tuple, list, deque, dict, set and frozenset.
+    To search other containers, add handlers to iterate over their contents:
+
+        handlers = {SomeContainerClass: iter,
+                    OtherContainerClass: OtherContainerClass.get_elements}
+
+    """
+    dict_handler = lambda d: chain.from_iterable(d.items())
+    all_handlers = {tuple: iter,
+                    list: iter,
+                    deque: iter,
+                    dict: dict_handler,
+                    set: iter,
+                    frozenset: iter,
+                   }
+    all_handlers.update(handlers)     # user handlers take precedence
+    seen = set()                      # track which object id's have already been seen
+    default_size = getsizeof(0)       # estimate sizeof object without __sizeof__
+
+    def sizeof(o):
+        if id(o) in seen:       # do not double count the same object
+            return 0
+        seen.add(id(o))
+        s = getsizeof(o, default_size)
+
+        if verbose:
+            print(s, type(o), repr(o), file=stderr)
+
+        for typ, handler in all_handlers.items():
+            if isinstance(o, typ):
+                s += sum(map(sizeof, handler(o)))
+                break
+        return s
+
+    return sizeof(o)
+
+
+
+
+def Binary_Representation_Without_MSB(x):
+    binary = "{0:b}".format(int(x))
+    binary_without_MSB = binary[1:]
+    return binary_without_MSB
+ 
+def EliasGammaEncode(k):
+    if (k == 0):
+        return '0'
+    N = 1 + floor(log(k, 2))
+    Unary = (N-1)*'0'+'1'
+    return Unary + Binary_Representation_Without_MSB(k)
+
+def EliasGammaDecode(k):
+    for idx, digit in enumerate(k):
+        if(digit == '1'):
+            return k[idx:]
+    return -1
+
+def EliasDeltaEncode(x):
+    Gamma = EliasGammaEncode(1 + floor(log(x, 2)))
+    binary_without_MSB = Binary_Representation_Without_MSB(x)
+    return Gamma+binary_without_MSB
+
+
 
 class Tokenizer:
     def tokenize(self, text: str) -> list:
@@ -117,29 +195,47 @@ class MoreSmartSearchEngine:
 
 if __name__ == "__main__":
     titles = pd.read_csv("msu_comments.csv")
+    #print(titles.id.median()) #352635 median id
     records = titles.to_dict("records")
 
     tok = PymorphyTokenizer()
     se = SearchEngine(tok)  # без инвертированного индекса
 
-    for record in records:
-        se.add_document(record["id"], str(record["text"]))
 
-    print(f'ректор мгу top10 searchEngine_results\n{se.search("ректор мгу")[:10]}')
+    INT_TO_CHECK = 1342124
+    print(f'{INT_TO_CHECK} encoded {EliasGammaEncode(INT_TO_CHECK)}')
+    print(f'{INT_TO_CHECK} decoded {int(EliasGammaDecode(EliasGammaEncode(INT_TO_CHECK)),2)}')
+    print(bytes(EliasGammaEncode(1342124), 'UTF-8'))
+
+    #for record in records:
+    #    se.add_document(record["id"], str(record["text"]))
+    #print(f'ректор мгу top10 searchEngine_results\n{se.search("ректор мгу")[:10]}')
 
     sse = SmartSearchEngine(tok)  # с инвертированным индексом
 
+    #индекс без сжатия:
     for record in records:
         sse.add_document(record["id"], str(record["text"]))
-
+    mem_before_encode = total_size(sse.inverted_index)
+    
+    del sse
+    sse = SmartSearchEngine(tok)
+    
+    #индекс с гамма/дельта кодированием:
+    for record in records:
+        sse.add_document(bytes(EliasDeltaEncode(record["id"]), 'UTF-8'), str(record["text"]))
+    mem_after_delta_encode = total_size(sse.inverted_index)
+    
+    
+    print(f'compression ratio= {mem_before_encode / mem_after_delta_encode}')
+    
     print(f'ректор мгу top10 SmartSearchEngine_results{sse.search("ректор мгу")[:10]}')
 
+    
     msse = MoreSmartSearchEngine(tok) # с инвертированным индексом 
                                       # и учётом кол-ва совпадений (мб криво работает пока)
-
     for record in records:
         msse.add_document(record["id"], str(record["text"]))
-
     print(f'ректор мгу top10 SmartSearchEngine_results{list(zip(*msse.search("ректор мгу")))[0][:10]}')
 
     #print(msse.doc2text)
