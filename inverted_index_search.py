@@ -6,10 +6,12 @@ from functools import lru_cache
 
 from math import log
 from math import floor
+import time
 
 from sys import getsizeof, stderr
 from itertools import chain
 from collections import deque
+
 try:
     from reprlib import repr
 except ImportError:
@@ -132,6 +134,8 @@ class SmartSearchEngine:
         self.tok = tokenizer
         self.inverted_index = defaultdict(set)
         self.doc2text = {}
+        self.gamma_encoded_index = []
+        self.delta_encoded_index = []
 
     def add_document(self, doc_id: int, text: str):
         tokens = self.tok.tokenize(text)
@@ -199,7 +203,7 @@ if __name__ == "__main__":
     records = titles.to_dict("records")
 
     tok = PymorphyTokenizer()
-    se = SearchEngine(tok)  # без инвертированного индекса
+    #se = SearchEngine(tok)  # без инвертированного индекса
 
 
     INT_TO_CHECK = 1342124
@@ -214,28 +218,30 @@ if __name__ == "__main__":
     sse = SmartSearchEngine(tok)  # с инвертированным индексом
 
     #индекс без сжатия:
+    
     for record in records:
         sse.add_document(record["id"], str(record["text"]))
     mem_before_encode = total_size(sse.inverted_index)
     
+    t1 = time.time()
+    res  = sse.search("ректор мгу")
+    t2 = time.time()
+    
+    print(f'ректор мгу top10 SmartSearchEngine_results\n{res[:10]}')
+    print(f"Time elapsed {t2-t1} seconds")
+    
     del sse
-    sse = SmartSearchEngine(tok)
-    
-    #индекс с гамма/дельта кодированием:
-    for record in records:
-        sse.add_document(bytes(EliasDeltaEncode(record["id"]), 'UTF-8'), str(record["text"]))
-    mem_after_delta_encode = total_size(sse.inverted_index)
-    
-    
-    print(f'compression ratio= {mem_before_encode / mem_after_delta_encode}')
-    
-    print(f'ректор мгу top10 SmartSearchEngine_results{sse.search("ректор мгу")[:10]}')
-
+    del res
     
     msse = MoreSmartSearchEngine(tok) # с инвертированным индексом 
                                       # и учётом кол-ва совпадений (мб криво работает пока)
     for record in records:
         msse.add_document(record["id"], str(record["text"]))
-    print(f'ректор мгу top10 SmartSearchEngine_results{list(zip(*msse.search("ректор мгу")))[0][:10]}')
-
+    
+    t1 = time.time()
+    res = list(zip(*msse.search("ректор мгу")))[0]
+    t2 = time.time()
+    
+    print(f'ректор мгу top10 MoreSmartSearchEngine_results{res[:10]}')
+    print(f"Time elapsed MoreSmartSearchEngine {t2-t1} seconds")
     #print(msse.doc2text)
