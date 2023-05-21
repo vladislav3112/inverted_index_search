@@ -189,7 +189,7 @@ class MoreSmartSearchEngine:
                     doc_matches_count[doc_id] = doc_matches_count.get(doc_id, 0) + 1
 
         sorted_doc_ids = sorted(
-            doc_ids.items(), key=lambda x: (-doc_matches_count[x[0]], x[1])
+            doc_ids.items(), key=lambda x: -doc_matches_count[x[0]]
         )
         return [
             (self.doc2text[doc_id], doc_matches_count[doc_id], sum_pos)
@@ -197,6 +197,7 @@ class MoreSmartSearchEngine:
         ]
 
 
+    
 if __name__ == "__main__":
     titles = pd.read_csv("msu_comments.csv")
     #print(titles.id.median()) #352635 median id
@@ -223,12 +224,14 @@ if __name__ == "__main__":
         sse.add_document(record["id"], str(record["text"]))
     mem_before_encode = total_size(sse.inverted_index)
     
-    t1 = time.time()
-    res  = sse.search("ректор мгу")
-    t2 = time.time()
+    t1 = time.time_ns()
+    for _ in range(100000):
+        res  = sse.search("ректор мгу")
+    t2 = time.time_ns()
+    print(f"Smart search time elapsed {(t2-t1)/100000} nanoseconds\n")
+
     
     print(f'ректор мгу top10 SmartSearchEngine_results\n{res[:10]}')
-    print(f"Time elapsed {t2-t1} seconds")
     
     del sse
     del res
@@ -239,9 +242,10 @@ if __name__ == "__main__":
         msse.add_document(record["id"], str(record["text"]))
     
     t1 = time.time()
-    res = list(zip(*msse.search("ректор мгу")))[0]
+    for _ in range(100):
+        res = list(zip(*msse.search("ректор мгу")))[0]
     t2 = time.time()
     
+    print(f"More smart search time elapsed {(t2-t1)/100} seconds\n")
     print(f'ректор мгу top10 MoreSmartSearchEngine_results{res[:10]}')
-    print(f"Time elapsed MoreSmartSearchEngine {t2-t1} seconds")
     #print(msse.doc2text)
