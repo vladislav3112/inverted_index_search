@@ -73,16 +73,54 @@ def EliasGammaEncode(k):
     return Unary + Binary_Representation_Without_MSB(k)
 
 def EliasGammaDecode(k):
-    for idx, digit in enumerate(k):
-        if(digit == '1'):
-            return k[idx:]
-    return -1
+    numbers_encoded = []
+    count = 1
+    iterator = enumerate(k)
+    global_counter = len(k)
+    
+    for idx, digit in iterator:
+        if(digit == '1'): #encode num when no more leading zeros 
+            numbers_encoded.append(int(k[idx : idx + count],2))
+            for _ in range(count - 1): #skip encoded number
+                if (global_counter < 1):
+                    return numbers_encoded
+                next(iterator)
+                global_counter -= 1
+            count = 1
+        else:
+            count += 1
+            global_counter -= 1
+    return numbers_encoded
+
 
 def EliasDeltaEncode(x):
     Gamma = EliasGammaEncode(1 + floor(log(x, 2)))
     binary_without_MSB = Binary_Representation_Without_MSB(x)
     return Gamma+binary_without_MSB
 
+def EliasDeltaDecode(k):
+    numbers_encoded = []
+    count = 0
+    iterator = enumerate(k)
+    global_counter = len(k)
+        
+    for idx, digit in iterator:
+        if(digit == '1'):
+            L = 2**count + int(k[idx + 1 : idx + count + 1], 2)
+            for _ in range(count):
+                if (global_counter < 1):
+                    return numbers_encoded
+                next(iterator)
+                global_counter -= 1
+            numbers_encoded.append(2**(L-1) + int(k[idx + count + 1 : idx + L + count], 2))
+            for _ in range(L-1):
+                next(iterator)
+                global_counter -= 1
+            count = 0
+        else:
+            count += 1
+            global_counter -= 1
+    return numbers_encoded
 
 
 class Tokenizer:
@@ -134,9 +172,29 @@ class SmartSearchEngine:
         self.tok = tokenizer
         self.inverted_index = defaultdict(set)
         self.doc2text = {}
-        self.gamma_encoded_index = []
-        self.delta_encoded_index = []
 
+    def encode_index_gamma(self):
+        for elem in self.inverted_index:
+            encoded_str = ""
+            for number in self.inverted_index[elem]:
+                encoded_str += EliasGammaEncode(number)
+            self.inverted_index[elem] = bytes(encoded_str, 'UTF-8')
+            
+    def encode_index_delta(self):
+        for elem in self.inverted_index:
+            encoded_str = ""
+            for number in self.inverted_index[elem]:
+                encoded_str += EliasDeltaEncode(number)
+            self.inverted_index[elem] = bytes(encoded_str, 'UTF-8')      
+    
+    def decode_all_gamma(self):
+        for elem in self.inverted_index:
+            self.inverted_index[elem] = set(EliasGammaDecode(self.inverted_index[elem].decode("utf-8")))
+    
+    def decode_all_delta(self):
+        for elem in self.inverted_index:
+            self.inverted_index[elem] = set(EliasDeltaDecode(self.inverted_index[elem].decode("utf-8")))
+        
     def add_document(self, doc_id: int, text: str):
         tokens = self.tok.tokenize(text)
         for token in tokens:
@@ -207,10 +265,20 @@ if __name__ == "__main__":
     #se = SearchEngine(tok)  # без инвертированного индекса
 
 
-    INT_TO_CHECK = 1342124
+    INT_TO_CHECK = 10
+    
+    arr_to_check = [10, 1231, 1212, 8]
+    s = ""
+    print(f'arr to encode: ', arr_to_check)
+    for elem in arr_to_check:
+        s += EliasDeltaEncode(elem)
+    print(f'encoded_arr: ', EliasDeltaDecode(s))
+    
     print(f'{INT_TO_CHECK} encoded {EliasGammaEncode(INT_TO_CHECK)}')
-    print(f'{INT_TO_CHECK} decoded {int(EliasGammaDecode(EliasGammaEncode(INT_TO_CHECK)),2)}')
+    print(f'{INT_TO_CHECK} decoded {EliasGammaDecode(EliasGammaEncode(INT_TO_CHECK))}')
     print(bytes(EliasGammaEncode(1342124), 'UTF-8'))
+
+
 
     #for record in records:
     #    se.add_document(record["id"], str(record["text"]))
@@ -233,8 +301,25 @@ if __name__ == "__main__":
     
     print(f'ректор мгу top10 SmartSearchEngine_results\n{res[:10]}')
     
+    t1 = time.time()
+    sse.encode_index_delta()
+    t2 = time.time()
+    
+    mem_after_encode = total_size(sse.inverted_index)
+    print(f"encoding time: {t2-t1} seconds\n")
+    print(f"Compression ratio {mem_before_encode / mem_after_encode}\n")
+    
+    t1 = time.time()
+    sse.decode_all_delta()
+    t2 = time.time()
+    
+    print(f"decoding time: {t2-t1} seconds\n")
+    res = sse.search("ректор мгу")
+    print(f'ректор мгу top10 SmartSearchEngine_results\n{res[:10]}')
+    
     del sse
     del res
+    
     
     msse = MoreSmartSearchEngine(tok) # с инвертированным индексом 
                                       # и учётом кол-ва совпадений (мб криво работает пока)
